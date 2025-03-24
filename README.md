@@ -147,47 +147,19 @@ Arduino와 PC(웹 브라우저)가 **시리얼 통신**으로 연결되며, 웹 
 
 ## 주의 사항
 
-- **전원 공급**: LED, 버튼, 가변저항 등 주변 장치가 많은 경우, 외부 전원을 사용하거나 전류 제한에 유의해야 합니다.  
-- **PWM 핀 충돌**: 9, 10, 11번 핀이 다른 기능(PWM 외 SPI, I2C 등)과 겹치지 않도록 주의.  
-- **Web Serial API**: 최신 버전의 Chrome 계열 브라우저에서만 동작합니다.
+- **전원 공급**: LED, 버튼, 가변저항 등 주변 장치가 많은 경우, 외부 전원을 사용하거나 전류 제한에 유의해야 합니다.
 
 ---
 
 ## 디렉터리 구조
 
-아래는 **ECS_TRAFFIC_LIGHT_HANDPOSE_CONTROL** 프로젝트의 전체 폴더 구성입니다.  
-Arduino 쪽은 **PlatformIO** 기반으로, 웹 쪽은 **p5** 폴더 안에 배치되어 있습니다.
-
+아래는 **ECS_INTERACTIVE_REACTIONS** 프로젝트의 전체 폴더 구성입니다.  
 ```plaintext
-ECS_TRAFFIC_LIGHT_HANDPOSE_CONTROL/
-├── arduino
-│   ├── .pio
-│   ├── .vscode
-│   ├── include
-│   ├── lib
-│   ├── src
-│   │   └── main.cpp               # 아두이노 신호등 제어 메인 코드
-│   ├── test
-│   ├── .gitignore
-│   ├── platformio.ini             # PlatformIO 설정 파일
-│   └── README.md                  # (아두이노 관련 설명이 포함될 수 있음)
-├── image
-│   ├── Arduino_circuit_diagram.png  # 아두이노 회로도 이미지 1
-│   ├── Arduino_circuit.jpg          # 아두이노 회로도 이미지 2
-│   ├── gesture_default.jpg          # 기본(Default) 손동작 이미지
-│   ├── gesture_emergency.jpg        # 긴급(Emergency) 손동작 이미지
-│   ├── gesture_thumbsdown.jpg       # 엄지 아래(ThumbsDown) 손동작 이미지
-│   ├── gesture_thumbsup.jpg         # 엄지 위(ThumbsUp) 손동작 이미지
-│   ├── gesture_palette.jpg          # 팔레트(Palette) 손동작 이미지
-│   ├── palette_red.jpg             # 팔레트 모드에서 빨간 LED 선택 시연 이미지
-│   ├── palette_yellow.jpg          # 팔레트 모드에서 노랑 LED 선택 시연 이미지
-│   ├── palette_green.jpg           # 팔레트 모드에서 초록 LED 선택 시연 이미지
-│   ├── S1_System_Diagram.png       # 시스템 다이어그램 (신호등 일반 버전)
-│   └── S2_System_Diagram.png       # 시스템 다이어그램 (신호등 확장 버전)
+ECS_INTERACTIVE_REACTIONS/
 ├── p5
 │   ├── index.html            # 웹 UI (HTML)
 │   ├── README.md             # (p5 관련 설명이 포함될 수 있음)
-│   ├── sketch.js             # p5.js 스케치 (시리얼 통신, UI 제어)
+│   ├── sketch.js             # p5.js 스케치 (UI 제어)
 │   └── style.css             # 웹 UI 스타일
 │
 ├── LICENSE
