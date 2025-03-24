@@ -655,16 +655,17 @@ function drawOverlay(mode) {
 
 // Reactive Button 관련 코드
 // 전역 변수로 reactiveButtons 배열 선언 (캔버스 좌측 중앙에 배치)
+// reactiveButtons 배열에 각 버튼에 displayStart를 추가합니다.
 let reactiveButtons = [
-  { id: 1, label: "btn 1", x: 20, y: 135, width: 50, height: 50, activationStart: 0, active: false, displayStart: 0, triggered: false },
-  { id: 2, label: "btn 2", x: 20, y: 195, width: 50, height: 50, activationStart: 0, active: false, displayStart: 0, triggered: false },
-  { id: 3, label: "btn 3", x: 20, y: 255, width: 50, height: 50, activationStart: 0, active: false, displayStart: 0, triggered: false },
-  { id: 4, label: "btn 4", x: 20, y: 315, width: 50, height: 50, activationStart: 0, active: false, displayStart: 0, triggered: false }
+  { id: 1, label: "btn 1", x: 20, y: 135, width: 50, height: 50, activationStart: 0, active: false, displayStart: 0, triggered: false, effectCalled: false },
+  { id: 2, label: "btn 2", x: 20, y: 195, width: 50, height: 50, activationStart: 0, active: false, displayStart: 0, triggered: false, effectCalled: false },
+  { id: 3, label: "btn 3", x: 20, y: 255, width: 50, height: 50, activationStart: 0, active: false, displayStart: 0, triggered: false, effectCalled: false },
+  { id: 4, label: "btn 4", x: 20, y: 315, width: 50, height: 50, activationStart: 0, active: false, displayStart: 0, triggered: false, effectCalled: false }
 ];
-// ── 기존 reactiveButtons 수정 (버튼 1에 대한 효과 적용) ──
 function drawReactiveButtons() {
+  // 현재 모드가 기본 모드일 때만 동작하도록
   if (currentMode !== "default" || paletteActive) return;
-  
+
   let handActive = (hands.length > 0);
   let indexTip = null;
   if (handActive) {
@@ -684,70 +685,132 @@ function drawReactiveButtons() {
     textSize(12);
     text(btn.label, btn.x + btn.width / 2, btn.y + btn.height / 2);
     
-    // 손가락이 버튼 영역 안에 있다면
+    // 손가락이 버튼 영역 안에 있는지 확인
     if (handActive && indexTip &&
         indexTip.x >= btn.x && indexTip.x <= btn.x + btn.width &&
         indexTip.y >= btn.y && indexTip.y <= btn.y + btn.height) {
-      // 아직 트리거되지 않았다면 타이머 시작
-      if (!btn.triggered) {
+      
+      // 버튼 효과가 활성화되지 않은 경우 1초 카운트 시작
+      if (!btn.active) {
         if (btn.activationStart === 0) {
           btn.activationStart = millis();
         } else {
-          let progress = constrain((millis() - btn.activationStart) / 1000, 0, 1);
-          drawProgressBorder(btn.x, btn.y, btn.width, btn.height, progress);
+          let progress = (millis() - btn.activationStart) / 1000;
+          drawProgressBorder(btn.x, btn.y, btn.width, btn.height, constrain(progress, 0, 1));
           if (progress >= 1) {
-            btn.triggered = true;  // 한 번 누르면 트리거됨
             btn.active = true;
             btn.displayStart = millis();
             btn.activationStart = 0;
+            console.log("버튼 " + btn.id + " 효과 활성화됨");
           }
         }
       }
     } else {
-      // 손이 영역을 벗어나면 타이머 및 트리거 리셋
-      btn.activationStart = 0;
-      btn.triggered = false;
+      // 손이 버튼 영역을 벗어나면 타이머 리셋 (단, 이미 활성화된 경우는 3초 동안 유지)
+      if (!btn.active) {
+        btn.activationStart = 0;
+      }
     }
     
-    // 효과 활성화된 버튼에 대해 ID에 따라 해당 효과 함수 호출
+    // 버튼이 활성화된 경우, 해당 효과 함수를 호출하여 3초 지속 로직을 처리
     if (btn.active) {
       switch (btn.id) {
         case 1:
-          handleButton1Effect();
+          handleButton1Effect(btn);
           break;
         case 2:
-          handleButton2Effect();
+          handleButton2Effect(btn);
           break;
         case 3:
-          handleButton3Effect();
+          handleButton3Effect(btn);
           break;
         case 4:
-          handleButton4Effect();
+          handleButton4Effect(btn);
           break;
       }
-      // btn.active는 효과 함수 내부에서 종료 시점에 false로 리셋됨
     }
   }
 }
 
-
 //----------------------------------------------------------------------------------//
 // 버튼 관련 함수들 
-// ── 버튼 1 효과 통합 함수 ──
-function handleButton1Effect() {
-  // 버튼 1에 대한 반응 추가 예정
-
+// 각 함수는 3초가 경과했는지 체크하고, 경과 시 버튼 상태를 리셋합니다.
+// ── 버튼 1 효과 함수 ──
+function handleButton1Effect(btn) {
+  if (millis() - btn.displayStart >= 3000) {  // 3초 경과 시 효과 해제
+    btn.active = false;
+    btn.triggered = false;
+    btn.activationStart = 0;
+    btn.displayStart = 0;
+    console.log("버튼 1 효과 해제됨");
+    return;
+  }
+  
+  push();
+  textAlign(CENTER, CENTER);
+  textSize(18);
+  fill(0, 0, 255);
+  text("버튼 1 효과 실행중", width / 2, 80);
+  pop();
+  console.log("handleButton1Effect 호출됨");
 }
 
-// ── 빈 함수 (버튼 2, 3, 4) ──
-function handleButton2Effect() {
-  // 버튼 2에 대한 반응 추가 예정
+// ── 버튼 2 효과 함수 ──
+function handleButton2Effect(btn) {
+  if (millis() - btn.displayStart >= 3000) {
+    btn.active = false;
+    btn.triggered = false;
+    btn.activationStart = 0;
+    btn.displayStart = 0;
+    console.log("버튼 2 효과 해제됨");
+    return;
+  }
+  
+  push();
+  textAlign(CENTER, CENTER);
+  textSize(18);
+  fill(0, 0, 255);
+  text("버튼 2 효과 실행중", width / 2, 110);
+  pop();
+  console.log("handleButton2Effect 호출됨");
 }
 
-function handleButton3Effect() {
-  // 버튼 3에 대한 반응 추가 예정
+// ── 버튼 3 효과 함수 ──
+function handleButton3Effect(btn) {
+  if (millis() - btn.displayStart >= 3000) {
+    btn.active = false;
+    btn.triggered = false;
+    btn.activationStart = 0;
+    btn.displayStart = 0;
+    console.log("버튼 3 효과 해제됨");
+    return;
+  }
+  
+  push();
+  textAlign(CENTER, CENTER);
+  textSize(18);
+  fill(0, 0, 255);
+  text("버튼 3 효과 실행중", width / 2, 140);
+  pop();
+  console.log("handleButton3Effect 호출됨");
 }
 
-function handleButton4Effect() {
-  // 버튼 4에 대한 반응 추가 예정
+// ── 버튼 4 효과 함수 ──
+function handleButton4Effect(btn) {
+  if (millis() - btn.displayStart >= 3000) {
+    btn.active = false;
+    btn.triggered = false;
+    btn.activationStart = 0;
+    btn.displayStart = 0;
+    console.log("버튼 4 효과 해제됨");
+    return;
+  }
+  
+  push();
+  textAlign(CENTER, CENTER);
+  textSize(18);
+  fill(0, 0, 255);
+  text("버튼 4 효과 실행중", width / 2, 170);
+  pop();
+  console.log("handleButton4Effect 호출됨");
 }
