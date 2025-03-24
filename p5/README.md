@@ -1,213 +1,199 @@
-# (확장) p5.js 웹 인터페이스
+# 가상 제스처 보드 - 기능 및 로직 설명
 
-이 섹션은 기존 p5.js 기반 웹 인터페이스에 **HandPose(ml5.js)**를 활용한 **손동작(제스처) 인식**과 **팔레트 모드** 기능을 추가로 도입한 버전을 설명합니다.  
-기존 코드의 전반적인 구조(시리얼 통신, 슬라이더 전송, UI 업데이트 등)는 유지하면서, 제스처 인식 로직과 팔레트 모드가 확장되었습니다.
-
----
-
-## 전체 동작 원리
-
-1. **웹캠 영상 및 손동작 인식**  
-   - `preload()`에서 HandPose 모델을 로드한 뒤, `setup()`에서 `handPose.detectStart(video, gotHands)`를 호출해 실시간 웹캠 영상을 분석합니다.  
-   - 매 프레임(`draw()`)마다 감지된 손 키포인트를 스켈레톤으로 표시하고, `detectGesture()`로 제스처를 판별해 필요한 모드를 전환합니다.
-
-2. **팔레트 모드 추가**  
-   - 기존에는 빨강·노랑·초록 슬라이더를 통해 LED 주기를 변경했지만, 이제는 `drawPalette()` 함수를 통해 화면에 표시된 **빨강·노랑·초록 원** 위에 손가락(엄지·검지)을 올려놓으면 LED 주기를 직관적으로 조절할 수 있습니다.  
-   - 750ms 동안 동일 거리를 유지하면 실제 슬라이더 값도 갱신되어 아두이노 측에 반영됩니다.
-
-3. **쿨다운(gestureTimer) 기반 모드 전환**  
-   - 긴급(Emergency), 엄지 위(ThumbsUp), 엄지 아래(ThumbsDown), 팔레트(Palette) 등 제스처가 **1초간 동일**하게 유지되어야 모드 전환이 이뤄집니다.  
-   - 이를 통해 손동작이 순간적으로 흔들려도 잘못 모드가 바뀌지 않도록 안정성을 확보합니다.
-
-4. **시리얼 통신 및 UI 업데이트**  
-   - 시리얼 통신(`connectSerial`, `readLoop`, `sendSliderValues`, `processSerialData`) 로직은 기존과 동일하게 동작합니다.  
-   - 수신된 LED 상태와 밝기는 `updateIndicators()`와 `updateInfoDisplay()`로 반영되고, 슬라이더 값은 주기적으로 아두이노로 전송됩니다.
+이 문서는 `ml5.js` HandPose 모델과 `p5.js`를 사용하여 구현된 가상 제스처 보드의 **주요 함수**와 **로직 흐름**을 정리한 것입니다.  
+프로젝트 목적은 웹캠으로 인식된 손동작(제스처)을 바탕으로, 반응형 버튼을 활성화하거나 팔레트 UI를 통해 그림을 그리는 등 다양한 인터랙션을 제공하는 것입니다.
 
 ---
 
-## 주요 동작별 함수별 설명
-
-### **시리얼 통신 관련**  
-- **`connectSerial()`**  
-  - 기존과 동일하게 브라우저 시리얼 API를 통해 포트 연결.  
-  - 연결 성공 시 `portConnected = true`로 설정하고, `readLoop()` 호출로 데이터 수신 시작.
-- **`readLoop()`**  
-  - 수신된 바이트 스트림을 문자열로 누적(`latestData`), 줄바꿈(`\n`) 기준으로 분할해 `processSerialData()`에 전달.
-- **`processSerialData(dataStr)`**  
-  - 밝기(B), 모드(M), LED 상태(O) 값을 정규표현식으로 추출 후, UI 업데이트 함수 호출.
-- **`sendSliderValues()`**  
-  - 슬라이더(`rSlider`, `ySlider`, `gSlider`) 값과 `pendingModeToken`을 쉼표 구분으로 전송.  
-  - 팔레트 모드에서 주기가 변경될 때도 이 함수를 통해 아두이노 측에 반영.
-
-### **디스플레이 인디케이터 업데이트**  
-- **`updateInfoDisplay()`**  
-  - 밝기(`brightnessValue`), 모드(`modeValue`)를 HTML 요소(`#serialInfo`)에 표시.
-- **`updateIndicators()`**  
-  - `ledState` 값(0/1)에 따라 빨강·노랑·초록 LED 인디케이터 색상 결정.  
-  - `brightnessValue`에 따라 색상 밝기(`bVal`, `bVal*0.2`)를 조절해 LED가 켜짐/꺼짐 상태를 시각화.
-
-### **영상, 제스처 관련**  
-- **`preload()`**  
-  - **HandPose** 모델을 로드.  
-- **`setup()`**  
-  - 기존과 동일하게 캔버스 생성, 시리얼 연결 버튼 설정.  
-  - `handPose.detectStart(video, gotHands)`를 통해 웹캠 영상을 분석 시작.  
-- **`draw()`**  
-  1. 주기(`sendInterval`)마다 슬라이더 값 전송.  
-  2. 웹캠 영상을 그리고, `drawHandKeypointsAndSkeleton()`로 손 키포인트와 스켈레톤 표시.  
-  3. `detectGesture()`로 판별된 제스처가 1초 유지되면(`gestureTimer`), `changeMode()`로 모드 전환.  
-  4. **팔레트 모드**(`paletteActive`)가 true이면 `drawPalette()`를 호출해 색상 팔레트 UI를 표시.
-- **`gotHands(results)`**  
-  - HandPose가 감지한 손 정보를 `hands` 배열에 저장.  
-- **`detectGesture(hand)`**  
-  - 엄지·검지·중지·약지·새끼 손가락 펼쳐짐 여부를 분석해 Emergency, ThumbsUp, ThumbsDown, Palette, Default 등으로 분기.  
-  - 제스처 메시지(`gestureMessage`)를 갱신.
-- **`changeMode(gesture)`**  
-  - 제스처에 맞춰 **`pendingModeToken`**을 설정하거나, 팔레트 모드를 토글.  
-  - 예: Emergency → `PCINT1`, ThumbsUp → `PCINT2`, ThumbsDown → `PCINT3`, Default → `"Default"`.
-
-### **헬퍼 함수**  
-- **`flipX(x)`**  
-  - 웹캠이 좌우 반전된 상태이므로, x좌표를 `640 - x`로 뒤집어 표시.
-
-### **시각화 관련 기타 함수**  
-- **`drawHandKeypointsAndSkeleton()`**  
-  - 빨간 원으로 키포인트를 표시, 초록 선으로 스켈레톤을 연결해 손 구조를 시각적으로 보여줌.
-- **`getAverageKeypointPosition(hand)`**  
-  - 손 키포인트 평균 위치를 계산해 쿨다운 게이지(`drawGestureGauge`)나 팔레트 모드 표시 등에 사용.
-- **`drawGestureGauge(percentage, avgPos)`**  
-  - 제스처 유지 시간을 0~1 범위(`percentage`)로 환산해 게이지로 표현.  
-  - 사용자가 1초 쿨다운이 얼마나 진행됐는지 한눈에 파악 가능.
----
-
-## 전체 동작 원리
-
-1. **시리얼 포트 연결**  
-   - 사용자가 “Connect Serial” 버튼을 클릭하면, 브라우저에서 Arduino 시리얼 포트를 선택할 수 있습니다.  
-   - 선택된 포트가 연결되면 `portConnected` 변수가 `true`가 되어, 주기적으로 슬라이더 값을 Arduino에 전송하고, Arduino에서 전송되는 데이터를 읽어 UI를 업데이트합니다.
-
-2. **슬라이더 제어**  
-   - 빨강(`rSlider`), 노랑(`ySlider`), 초록(`gSlider`) 슬라이더 값을 500ms 간격(`sendInterval`)으로 Arduino에 전송합니다.  
-   - Arduino는 이 값을 받아 LED 지속 시간을 조정하거나, 원하는 방식으로 활용할 수 있습니다.
-
-3. **시리얼 데이터 수신 및 파싱**  
-   - Arduino로부터 받은 데이터(예: `B: 160 M: PCINT2 O: 1,0,1`)를 해석하여  
-     - **밝기(`brightnessValue`)**  
-     - **모드(`modeValue`)**  
-     - **LED 상태(`ledState`)**  
-     를 추출합니다.  
-   - 추출된 정보는 UI에 실시간으로 반영되어, 신호등 인디케이터 색상과 시리얼 정보 영역을 업데이트합니다.
-
-4. **UI 업데이트**  
-   - 빨강, 노랑, 초록 LED 인디케이터는 `ledState` 값(0 또는 1)에 따라 색상이 바뀌며, `brightnessValue`를 바탕으로 색상의 밝기를 조절합니다.  
-   - 모드 정보는 사용자에게 친숙한 문자열(Mode1, Mode2, Mode3, Default)로 변환해 표시합니다.
+## 목차
+1. [전역 변수 정의](#전역-변수-정의)  
+2. [HandPose 초기화](#handpose-초기화)  
+3. [스켈레톤 및 제스처 인식](#스켈레톤-및-제스처-인식)  
+4. [모드 전환 및 오버레이](#모드-전환-및-오버레이)  
+5. [팔레트 모드 UI](#팔레트-모드-ui)  
+6. [Reactive Button (반응형 버튼)](#reactive-button-반응형-버튼)  
+7. [p5.js setup(), draw()](#p5js-setup-draw)
 
 ---
 
-# (기존) p5.js 웹 인터페이스
+## 전역 변수 정의
 
-이 폴더(`p5`)는 웹 브라우저를 통해 Arduino와 시리얼 통신을 수행하며, LED 상태와 지속 시간을 조절할 수 있는 UI를 제공하는 코드를 담고 있습니다. **Web Serial API**와 **p5.js**를 활용하여 직관적인 인터페이스를 구현하였습니다.
+- **웹캠 캡처 관련**  
+  - `video`: p5.js에서 `createCapture()`로 얻은 웹캠 영상 객체  
+  - `hands`: HandPose 모델이 감지한 손 정보(배열)
 
----
+- **제스처 판별 관련**  
+  - `gestureTimer`: 특정 제스처가 연속 유지된 시간(ms)  
+  - `gestureThreshold`: 제스처를 확정하기까지 필요한 시간(1초)  
+  - `lastGesture`: 직전 프레임에서 감지된 제스처  
+  - `confirmedGesture`: 1초 이상 유지되어 확정된 제스처 이름  
 
-## 전체 동작 원리
+- **팔레트 모드 및 드로잉 관련**  
+  - `paletteActive`: 팔레트 모드 활성화 여부(`true`면 `drawPalette()` 호출)  
+  - `selectedTool`: `"pen"` 또는 `"eraser"` (팔레트 모드에서 선택된 도구)  
+  - `drawingLayer`: 펜으로 그린 픽셀을 기록할 `p5.Graphics` 레이어  
+  - `penColor`, `toolSize`: 현재 펜 색상 및 두께  
 
-1. **시리얼 포트 연결**  
-   - 사용자가 “Connect Serial” 버튼을 클릭하면, 브라우저에서 Arduino 시리얼 포트를 선택할 수 있습니다.  
-   - 선택된 포트가 연결되면 `portConnected` 변수가 `true`가 되어, 주기적으로 슬라이더 값을 Arduino에 전송하고, Arduino에서 전송되는 데이터를 읽어 UI를 업데이트합니다.
-
-2. **슬라이더 제어**  
-   - 빨강(`rSlider`), 노랑(`ySlider`), 초록(`gSlider`) 슬라이더 값을 500ms 간격(`sendInterval`)으로 Arduino에 전송합니다.  
-   - Arduino는 이 값을 받아 LED 지속 시간을 조정하거나, 원하는 방식으로 활용할 수 있습니다.
-
-3. **시리얼 데이터 수신 및 파싱**  
-   - Arduino로부터 받은 데이터(예: `B: 160 M: PCINT2 O: 1,0,1`)를 해석하여  
-     - **밝기(`brightnessValue`)**  
-     - **모드(`modeValue`)**  
-     - **LED 상태(`ledState`)**  
-     를 추출합니다.  
-   - 추출된 정보는 UI에 실시간으로 반영되어, 신호등 인디케이터 색상과 시리얼 정보 영역을 업데이트합니다.
-
-4. **UI 업데이트**  
-   - 빨강, 노랑, 초록 LED 인디케이터는 `ledState` 값(0 또는 1)에 따라 색상이 바뀌며, `brightnessValue`를 바탕으로 색상의 밝기를 조절합니다.  
-   - 모드 정보는 사용자에게 친숙한 문자열(Mode1, Mode2, Mode3, Default)로 변환해 표시합니다.
+- **반응형 버튼 관련**  
+  - `reactiveButtons`: 캔버스 좌측에 표시될 버튼들의 속성 배열  
+  - 각 버튼은 `id`, `label`, `x`, `y`, `width`, `height` 및 활성화/해제 관련 변수를 지님  
 
 ---
 
-## 주요 함수별 설명
+## HandPose 초기화
 
-### 전역 변수
+1. **`preload()`**  
+   - `handPose = ml5.handPose();`  
+   - ml5.js의 HandPose 모델을 미리 로드(준비)하는 함수. p5.js의 `preload()` 시점에 호출.
 
-- **`port`**  
-  시리얼 포트 객체. `navigator.serial.requestPort()`로 얻어옴.
-- **`portConnected`**  
-  시리얼 포트 연결 상태를 나타내는 불리언 값.
-- **`latestData`**  
-  누적된 수신 데이터 문자열을 저장하는 버퍼.
-- **`brightnessValue`, `modeValue`, `ledState`**  
-  Arduino에서 수신한 데이터(밝기, 모드, LED 상태)를 파싱해 저장.
-- **`connectButton`, `rSlider`, `ySlider`, `gSlider`**  
-  HTML 요소를 p5.dom으로 선택해 저장한 변수. (버튼, 슬라이더 등)
-- **`lastSentTime`, `sendInterval`**  
-  마지막으로 슬라이더 값을 전송한 시각과 전송 주기를 제어.
+2. **`gotHands(results)`**  
+   - HandPose 모델이 매 프레임마다 감지한 결과(`results`)를 받아 `hands` 배열에 저장.  
+   - `hands`에는 여러 손이 있을 수 있으며, 각 손에 `keypoints[]` 정보가 포함.
 
-### `setup()`
-- **역할**: 페이지가 로드된 후 초기 설정을 수행합니다.
-- **핵심 동작**:
-  1. `connectButton = select("#connectButton")`  
-     - HTML 문서에서 ID가 `connectButton`인 버튼을 선택하고, 클릭 시 `connectSerial()` 함수를 호출하도록 설정.
-  2. 슬라이더 요소(`rSlider`, `ySlider`, `gSlider`)를 선택해 나중에 값 전송에 활용.
-  3. `draw()` 함수 대신 setInterval 등으로 반복 작업을 수행할 수도 있지만, 여기서는 `draw()`를 사용.
+---
 
-### `draw()`
-- **역할**: p5.js의 메인 루프 함수로, 매 프레임마다 호출됩니다.
-- **핵심 동작**:
-  1. `if (portConnected && millis() - lastSentTime > sendInterval)`  
-     - 시리얼이 연결되어 있고, 마지막 전송 후 `sendInterval`(500ms)이 지났는지 확인.
-  2. `sendSliderValues()`를 호출해 슬라이더 값을 전송하고, `lastSentTime` 업데이트.
+## 스켈레톤 및 제스처 인식
 
-### `connectSerial()`
-- **역할**: 사용자가 시리얼 연결 버튼을 클릭했을 때, 시리얼 포트를 요청하고 연결을 시도하는 비동기 함수.
-- **핵심 동작**:
-  1. `port = await navigator.serial.requestPort();`  
-     - 브라우저에서 시리얼 포트 선택 대화상자를 열어 사용자에게 포트를 선택하도록 함.
-  2. `await port.open({ baudRate: 9600 });`  
-     - 선택한 포트를 보오율 9600으로 열어 통신 준비.
-  3. `portConnected = true;` 로 상태 업데이트 후, 버튼 텍스트를 “Serial Connected”로 변경.
-  4. `readLoop()`를 호출하여 데이터 수신을 시작.
+1. **`drawHandKeypointsAndSkeleton()`**  
+   - `hands` 배열을 순회하면서, 각 손에 대해 21개 키포인트를 빨간 원으로 표시하고,  
+   - `fingerConnections` 배열에 정의된 인덱스 쌍을 따라 초록색 스켈레톤 선을 그린다.  
+   - 좌우 반전을 위해 `flipX(x) = 640 - x` 함수를 사용.
 
-### `readLoop()`
-- **역할**: 시리얼 포트에서 데이터를 지속적으로 읽어들이는 비동기 함수.
-- **핵심 동작**:
-  1. `const decoder = new TextDecoder();`  
-     - 바이트 스트림을 문자열로 변환하기 위한 디코더 생성.
-  2. 포트가 읽기 가능한 동안, `reader.read()`를 통해 반복적으로 데이터 수신.
-  3. `latestData`에 누적된 문자열 중 `\n`(개행 문자)이 있으면 한 줄씩 분할해 `processSerialData()`로 전달.
-  4. 모든 데이터 처리 후, `reader.releaseLock()`으로 잠금을 해제하여 다음 읽기 작업이 가능하도록 함.
+2. **`detectGesture(hand)`**  
+   - 한 손(`hand`)을 입력받아, 특정 조건(엄지·검지·중지 등 펼침 여부)에 따라  
+     `"Default"`, `"Palette"`, `"Emergency"`, `"ThumbsUp"`, `"ThumbsDown"`, `"Unknown"` 중 하나를 판별.  
+   - 판별 로직:  
+     - **모두 손가락 끝이 가까이** 모여 있으면 `"Default"`  
+     - **모든 손가락이 펼침** → `"Palette"`  
+     - **엄지·검지·중지**만 펼침 → `"Emergency"`  
+     - **엄지 하나**만 펼침 → `ThumbsUp` 또는 `ThumbsDown` (엄지 위치로 위/아래 판단)  
+   - 판별 결과를 `gestureMessage`에 저장하고, 문자열을 반환.
 
-### `processSerialData(dataStr)`
-- **역할**: 수신한 한 줄의 문자열을 파싱해 `brightnessValue`, `modeValue`, `ledState`를 업데이트.
-- **핵심 동작**:
-  1. 정규표현식(`^B:\s*(\d+)\s*M:\s*(\S+)\s*O:\s*([\d,]+)`)을 사용해 밝기(B), 모드(M), LED 상태(O)를 추출.
-  2. 추출한 값을 각각 변수에 저장 후, `updateInfoDisplay()`, `updateIndicators()` 호출로 UI 업데이트.
+3. **`getAverageKeypointPosition(hand)`**  
+   - 한 손의 모든 `keypoints` 평균 좌표를 계산해 `{x, y}` 형태로 반환.  
+   - UI 표시(게이지 위치 등)에 활용.
 
-### `sendSliderValues()`
-- **역할**: 슬라이더(`rSlider`, `ySlider`, `gSlider`) 값을 시리얼 포트를 통해 Arduino로 전송.
-- **핵심 동작**:
-  1. `port.writable`인지 확인하여, 포트가 쓰기 가능한 상태인지 확인.
-  2. 슬라이더 값들을 `"값1,값2,값3\n"` 형태로 조합해 TextEncoder로 인코딩 후 전송.
-  3. 전송 후 `writer.releaseLock()`으로 잠금을 해제.
+4. **`drawGestureGauge(percentage, avgPos)`**  
+   - 제스처가 유지된 정도(`percentage`)를 게이지 형태로 그린다.  
+   - 보통 `gestureTimer / gestureThreshold`를 0~1로 매핑하여 사용.
 
-### `updateInfoDisplay()`
-- **역할**: HTML 요소(예: `#serialInfo`)의 텍스트를 현재 `brightnessValue`, `modeValue`로 갱신.
-- **핵심 동작**:
-  1. `document.getElementById("serialInfo")`를 통해 요소를 선택.
-  2. `infoElement.textContent = …` 로 표시할 문자열 설정.
+5. **`drawProgressBorder(x, y, w, h, percentage)`**  
+   - 1초(등) 진행 상황을 보라색 테두리로 시각화.  
+   - 예: 버튼 위에 1초 머무르는 동안 테두리가 점차 오렌지색으로 채워짐.
 
-### `updateIndicators()`
-- **역할**: LED 상태(ledState)와 밝기(brightnessValue)에 따라 신호등 인디케이터 색상을 갱신.
-- **핵심 동작**:
-  1. 빨강, 노랑, 초록 인디케이터 각각에 대해 ledState가 1이면 LED가 켜진 색상, 0이면 어두운 색상 적용.
-  2. `brightnessValue`를 숫자로 변환하여 RGB 값에 반영.  
-     - 예: `redIndicator.style.backgroundColor = rgb(bVal, 0, 0)`  
-     - LED가 꺼진 상태면 `bVal * 0.2`로 약간 어둡게 표시.
+---
+
+## 모드 전환 및 오버레이
+
+1. **`changeMode(gesture)`**  
+   - `detectGesture()`로 판별된 제스처 문자열을 입력받아, `currentMode` 또는 `paletteActive`를 업데이트.  
+   - `"Palette"`가 감지되면 `paletteActive`를 토글하고, `currentMode`는 `"default"`로 설정.  
+   - 이미 `paletteActive`가 `true`인 상태에서는 다른 제스처를 무시.  
+   - `"Default"` → `currentMode = "default"`  
+   - `"Emergency"` → `currentMode = "emergency"`  
+   - `"ThumbsUp"` → `currentMode = "thumbsUp"`  
+   - `"ThumbsDown"` → `currentMode = "thumbsDown"`  
+
+2. **`drawOverlay(mode)`**  
+   - `currentMode`가 `"default"`가 아닐 때, 화면 전체를 반투명 배경으로 덮고, 모드별 텍스트를 중앙에 표시.  
+   - `"emergency"` → 검정 배경 + "자리 비움"  
+   - `"thumbsUp"` → 초록 배경 + "좋은 의견이에요!"  
+   - `"thumbsDown"` → 오렌지 배경 + "질문 있어요!"  
+   - 그 외에는 기본 검정 배경 처리.
+
+---
+
+## 팔레트 모드 UI
+
+1. **`drawPalette()`**  
+   - `paletteActive == true`일 때 호출되며, 팔레트 관련 UI를 그린다.  
+   - **Clear All** 버튼(좌측 상단), 펜/지우개 아이콘, 색상/크기 설정 블록 등을 표시.  
+   - Clear All 버튼 위에 1초간 손가락이 머무르면 `drawingLayer.clear()`로 전체 지움.
+
+2. **`drawToolIcons(penIcon, eraserIcon, penColorBlock, toolSizeBlock)`**  
+   - 펜/지우개 아이콘, 펜 색상 블록, 사이즈 블록을 그려주는 함수.  
+   - 선택된 도구(`selectedTool`)가 `"pen"`이면 해당 아이콘을 청록색, 아니면 흰색으로 표시.
+
+3. **`handleColorPad(penColorBlock)`**  
+   - 색상 패드 활성화 및 색 선택 로직.  
+   - 색상 패드 비활성 상태에서, `penColorBlock`에 1초 머무르면 4×4 그리드가 열림.  
+   - 그리드 셀(16가지 색상) 중 하나에 1초 머무르면 `penColor`가 해당 색상으로 확정.
+
+4. **`handleSizePad(toolSizeBlock)`**  
+   - 펜/지우개 크기 설정 로직.  
+   - 2×8(16칸) 그리드로 사이즈 1~16을 표시.  
+   - 셀 위에 1초 머무르면 `toolSize` 확정.
+
+5. **`handleToolSelection(penIcon, eraserIcon)`**  
+   - 펜/지우개 아이콘을 선택하거나, 엄지-검지 핀치 동작으로 실제 드로잉/지우개를 수행.  
+   - 아이콘에 1초 머무르면 `selectedTool`이 `"pen"`/`"eraser"`로 변경.  
+   - 핀치가 감지되면(`thumbTip`~`indexTip` 거리 < `pinchThreshold`),  
+     - `selectedTool === "pen"` → 보라색 원 표시 + `drawingLayer`에 선을 그림  
+     - `selectedTool === "eraser"` → 보라색 원 표시 + `drawingLayer.erase()`로 지우개 처리
+
+---
+
+## Reactive Button (반응형 버튼)
+
+1. **`reactiveButtons`**  
+   - 4개의 버튼 정보 배열. 각 버튼은 `id`, `label(이모지)`, `x,y,width,height`, `activationStart`, `active` 등 속성을 가짐.
+
+2. **`drawReactiveButtons()`**  
+   - `currentMode === "default"`일 때만 표시.  
+   - 각 버튼을 연녹색/연분홍색 배경으로 그리며, 손가락이 1초 머무르면 `active=true`.  
+   - `active=true`가 된 버튼은 3초간 특정 효과를 실행하고, 그동안 다른 버튼은 선택 불가.  
+   - 3초 후 해제 로직은 각 효과 함수 내부에서 처리.
+
+3. **버튼 효과 함수들** (`handleButton1Effect`, `handleButton2Effect`, `handleButton3Effect`, `handleButton4Effect`)  
+   - **공통 로직**:  
+     - 버튼이 활성화된 시점(`btn.displayStart`)부터 3초간 효과 실행  
+     - 3초가 지나면 `btn.active = false`로 해제  
+   - **버튼 1**: "안녕하세요! 반가워요."  
+     - 화면 좌우에 🖐️ 이모지를 배치, `sin()`으로 살짝 흔드는 애니메이션  
+   - **버튼 2**: "감동 받았어요!"  
+     - 😍 이모지를 여러 개 생성, 미세하게 흔들리는 효과  
+   - **버튼 3**: "웃음이 터져요!"  
+     - 🤣 이모지를 화면 하단에서 위로 떠오르게 함  
+   - **버튼 4**: "놀라워요!"  
+     - 😮 파티클(이모지)을 중앙에서 사방으로 튀어 나가게 표시
+
+---
+
+## p5.js setup(), draw()
+
+1. **`setup()`**  
+   - `createCanvas(640, 480)`: 640×480 캔버스  
+   - `video = createCapture(VIDEO, { flipped: true })`: 웹캠을 좌우 반전 모드로 캡처  
+   - `video.size(640, 480)`, `video.hide()`  
+   - `drawingLayer = createGraphics(640, 480)`: 드로잉 전용 레이어  
+   - `handPose.detectStart(video, gotHands)`: HandPose 모델에 영상과 콜백 설정
+
+2. **`draw()`**  
+   - `image(video, 0, 0, width, height)`: 웹캠 영상을 배경에 표시  
+   - `drawHandKeypointsAndSkeleton()`: 스켈레톤 표시  
+   - 손이 있으면 `detectGesture()`로 제스처 판별 → 1초 유지 시 `changeMode()`로 모드 전환  
+   - `paletteActive == true` → `drawPalette()`  
+   - `currentMode == "default"` → `drawReactiveButtons()`  
+   - `image(drawingLayer, 0, 0)`: 드로잉 레이어 합성  
+   - `text(gestureMessage, 10, 10)`: 좌상단에 제스처 메시지 표시  
+   - `currentMode != "default"` → `drawOverlay(currentMode)`로 오버레이
+
+---
+
+## 요약
+
+- **핵심 흐름**  
+  1) 웹캠에서 손 인식(HandPose)  
+  2) 제스처 판별(`detectGesture`) 및 유지 시간 체크  
+  3) 모드 전환(`changeMode`): `default`, `emergency`, `thumbsUp`, `thumbsDown`, `paletteActive`  
+  4) `paletteActive` → 팔레트 UI(`drawPalette`)에서 펜·지우개·색상·크기 조절  
+  5) `default` → 반응형 버튼(`drawReactiveButtons`)로 다양한 이모지 효과  
+  6) 모든 펜 드로잉은 `drawingLayer`에 기록되어, 모드 전환과 무관하게 유지  
+
+- **사용자 인터랙션**  
+  - **1초간 유지**(게이지 or 테두리 진행)라는 동일 규칙  
+  - 제스처 유지 1초 → 모드 전환  
+  - 버튼 영역 1초 → 버튼 활성화(3초 동안 효과)  
+  - 팔레트 아이콘 1초 → 색상·크기 패드 열림 → 패드 셀 위 1초 → 설정 확정  
+
+이상으로 각 함수와 전반적인 로직을 요약했습니다. 보다 자세한 내용은 코드 주석을 참고하시기 바랍니다.
